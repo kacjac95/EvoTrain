@@ -4,7 +4,7 @@ import { TransitionScreen, AcceptTransition } from './components/Common';
 import Chat from './views/Chat';
 import PlanPreview from './views/PlanPreview';
 import ProgressDashboard from './views/Dashboard';
-import './index.css'; // Zakładam, że styl pozostaje bez zmian
+import './index.css';
 
 export default function App() {
   const savedPlan = loadPlan();

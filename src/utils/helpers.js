@@ -98,10 +98,10 @@ export function thisWeekCount(sessions) {
 }
 
 export async function callAI(history, planCtx) {
-  const system=`Jesteś AI trenerem personalnym w aplikacji EvoTrain. Pomagasz korygować plany treningowe.
+  const systemText = `Jesteś AI trenerem personalnym w aplikacji EvoTrain. Pomagasz korygować plany treningowe.
 
 AKTUALNY PLAN:
-${JSON.stringify(planCtx,null,2)}
+${JSON.stringify(planCtx, null, 2)}
 
 Gdy MODYFIKUJESZ plan — odpowiedz TYLKO prawidłowym JSON (bez żadnego tekstu poza nim):
 {"message":"odpowiedź","changes":[{"type":"update_sets","dayIndex":0,"exIndex":0,"sets":4,"reps":"8-10","rest":"90s","description":"opis"},{"type":"swap_exercise","dayIndex":1,"exIndex":2,"newExId":"dl","description":"opis"}]}
@@ -111,10 +111,51 @@ ID ćwiczeń: sq,bp,dl,ohp,row,pu,pu_d,chin,pull,lunge,dbs,dbr,rdl,gobsq,pike,in
 
 Gdy ROZMAWIASZ bez zmian — odpowiedz zwykłym tekstem po polsku. Krótko, maks 3 zdania.`;
 
-  const res=await fetch('https://api.anthropic.com/v1/messages',{
-    method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:1000,system,messages:history.map(m=>({role:m.from==='user'?'user':'assistant',content:m.text}))})
-  });
-  const data=await res.json();
-  return (data.content||[]).map(b=>b.text||'').join('').trim();
+  // W wersji v1, gdzie systemInstruction nie jest rozpoznawane, 
+  // wstrzykujemy instrukcję jako pierwszą wiadomość użytkownika.
+  const contents = [
+    {
+      role: 'user',
+      parts: [{ text: `INSTRUKCJA I KONTEKST: ${systemText}` }]
+    },
+    {
+      role: 'model',
+      parts: [{ text: "Zrozumiałem instrukcje. Będę odpowiadać zgodnie z Twoimi wymaganiami (JSON dla zmian, tekst dla rozmowy). W czym mogę pomóc?" }]
+    },
+    // Mapujemy resztę historii użytkownika
+    ...history.map(m => ({
+      role: m.from === 'user' ? 'user' : 'model',
+      parts: [{ text: m.text }]
+    }))
+  ];
+
+  const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+
+  try {
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite-preview:generateContent?key=${apiKey}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: contents // Usunięto problematyczne pole systemInstruction
+      })
+    });
+
+    if (!res.ok) {
+      const errorData = await res.json();
+      console.error('Błąd Gemini API:', errorData);
+      throw new Error(`Błąd API: ${res.status}`);
+    }
+
+    const data = await res.json();
+    
+    if (data.candidates && data.candidates[0]?.content?.parts?.[0]?.text) {
+      return data.candidates[0].content.parts[0].text.trim();
+    }
+    
+    return "AI nie zwróciło żadnej treści.";
+
+  } catch (err) {
+    console.error('Błąd połączenia z Gemini:', err);
+    return "Wystąpił błąd podczas próby kontaktu z trenerem AI.";
+  }
 }
