@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { adaptEx } from '../utils/helpers';
+import MuscleMap from './MuscleMap';
+import { EXERCISES } from '../config/data';
 
 export function Logo({ onClick }) {
   return (
@@ -22,7 +24,6 @@ export function TransitionScreen({ onDone, labels }) {
   const [progress, setProgress] = useState(0);
   const [label, setLabel] = useState('');
   
-  // ZMIANA TUTAJ: Używamy useMemo, aby tablica nie tworzyła się na nowo przy każdym renderze
   const lbs = useMemo(() => labels || [
     [0, 'Analizuję profil...'],
     [30, 'Dopasowuję ćwiczenia...'],
@@ -68,7 +69,75 @@ export function AcceptTransition({ onDone }) {
   );
 }
 
-export function ExerciseCard({ ex, dayIdx, exIdx, onFeedback, readOnly }) {
+// NOWY KOMPONENT: Formularz dodawania / edycji ćwiczenia
+export function ExerciseModal({ isOpen, onClose, onSave, initialData }) {
+  const [exId, setExId] = useState(initialData?.id || EXERCISES[0].id);
+  const [sets, setSets] = useState(initialData?.sets || 3);
+  const [reps, setReps] = useState(initialData?.reps || '8-12');
+  const [rest, setRest] = useState(initialData?.rest || '90s');
+
+  if (!isOpen) return null;
+
+  const handleSave = () => {
+    const baseEx = EXERCISES.find(e => e.id === exId);
+    onSave({
+      ...baseEx,
+      sets: Number(sets),
+      reps,
+      rest,
+      aiUpdated: true // Flaga, żeby wyróżnić ręcznie dodane/zmienione ćwiczenie
+    });
+  };
+
+  return (
+    <div style={{
+      position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+      backgroundColor: 'rgba(0,0,0,0.85)', zIndex: 9999,
+      display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px'
+    }}>
+      <div style={{
+        background: '#121212', padding: '25px', borderRadius: '16px',
+        width: '100%', maxWidth: '400px', border: '1px solid #333', color: '#fff',
+        display: 'flex', flexDirection: 'column', gap: '15px'
+      }}>
+        <h3 style={{margin: 0, fontSize: '1.2rem'}}>{initialData ? 'Edytuj ćwiczenie' : 'Dodaj ćwiczenie'}</h3>
+        
+        <div style={{display: 'flex', flexDirection: 'column', gap: '5px'}}>
+          <label style={{fontSize: '0.85rem', color: '#aaa'}}>Ćwiczenie z bazy:</label>
+          <select 
+            value={exId} 
+            onChange={e => setExId(e.target.value)}
+            style={{padding: '10px', borderRadius: '8px', background: '#222', color: '#fff', border: '1px solid #444'}}
+          >
+            {EXERCISES.map(e => <option key={e.id} value={e.id}>{e.name} ({e.muscles})</option>)}
+          </select>
+        </div>
+
+        <div style={{display: 'flex', gap: '10px'}}>
+          <div style={{flex: 1, display: 'flex', flexDirection: 'column', gap: '5px'}}>
+            <label style={{fontSize: '0.85rem', color: '#aaa'}}>Serie</label>
+            <input type="number" value={sets} onChange={e => setSets(e.target.value)} style={{padding: '10px', borderRadius: '8px', background: '#222', color: '#fff', border: '1px solid #444', width: '100%'}} />
+          </div>
+          <div style={{flex: 1, display: 'flex', flexDirection: 'column', gap: '5px'}}>
+            <label style={{fontSize: '0.85rem', color: '#aaa'}}>Powtórzenia</label>
+            <input type="text" value={reps} onChange={e => setReps(e.target.value)} style={{padding: '10px', borderRadius: '8px', background: '#222', color: '#fff', border: '1px solid #444', width: '100%'}} />
+          </div>
+          <div style={{flex: 1, display: 'flex', flexDirection: 'column', gap: '5px'}}>
+            <label style={{fontSize: '0.85rem', color: '#aaa'}}>Przerwa</label>
+            <input type="text" value={rest} onChange={e => setRest(e.target.value)} style={{padding: '10px', borderRadius: '8px', background: '#222', color: '#fff', border: '1px solid #444', width: '100%'}} />
+          </div>
+        </div>
+
+        <div style={{display: 'flex', gap: '10px', marginTop: '10px'}}>
+          <button onClick={onClose} style={{flex: 1, padding: '12px', borderRadius: '8px', background: '#333', color: '#fff', border: 'none', cursor: 'pointer'}}>Anuluj</button>
+          <button onClick={handleSave} style={{flex: 1, padding: '12px', borderRadius: '8px', background: 'var(--neon)', color: '#000', border: 'none', fontWeight: 'bold', cursor: 'pointer'}}>Zapisz</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function ExerciseCard({ ex, dayIdx, exIdx, onFeedback, readOnly, onEdit, onDelete }) {
   const [open, setOpen] = useState(false);
   const [feedback, setFeedback] = useState(null);
   const [sug, setSug] = useState(null);
@@ -81,8 +150,17 @@ export function ExerciseCard({ ex, dayIdx, exIdx, onFeedback, readOnly }) {
   };
 
   return (
-    <div className={`ex-card${ex.aiUpdated ? ' ai-updated' : ''}`}>
-      <div className="ex-name">{ex.name}</div>
+    <div className={`ex-card${ex.aiUpdated ? ' ai-updated' : ''}`} style={{position: 'relative'}}>
+      
+      {/* Przyciski edycji i usuwania */}
+      {!readOnly && onEdit && onDelete && (
+        <div style={{position: 'absolute', top: '12px', right: '12px', display: 'flex', gap: '8px'}}>
+          <button onClick={onEdit} style={{background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '1.1rem', opacity: 0.7}}>✏️</button>
+          <button onClick={onDelete} style={{background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '1.1rem', opacity: 0.7}}>🗑️</button>
+        </div>
+      )}
+
+      <div className="ex-name" style={{paddingRight: (!readOnly && onEdit) ? '50px' : '0'}}>{ex.name}</div>
       <div className="ex-muscles">{ex.muscles}</div>
       <div className="ex-tags">
         <span className={`tag ${ex.cat.toLowerCase()}`}>{ex.cat}</span>
@@ -115,7 +193,18 @@ export function ExerciseCard({ ex, dayIdx, exIdx, onFeedback, readOnly }) {
   );
 }
 
-export function DayBlock({ dayData, dayIdx, onFeedback, readOnly }) {
+export function DayBlock({ dayData, dayIdx, onFeedback, onModifyPlan, readOnly }) {
+  const [modalState, setModalState] = useState({ isOpen: false, exIdx: null, data: null });
+
+  const handleSaveModal = (newData) => {
+    if (modalState.exIdx !== null) {
+      onModifyPlan(dayIdx, 'edit', modalState.exIdx, newData);
+    } else {
+      onModifyPlan(dayIdx, 'add', null, newData);
+    }
+    setModalState({ isOpen: false, exIdx: null, data: null });
+  };
+
   if(dayData.type === 'rest') return (
     <div className="day-block" style={{animationDelay: `${dayIdx * 0.05}s`}}>
       <div className="day-header">
@@ -135,11 +224,42 @@ export function DayBlock({ dayData, dayIdx, onFeedback, readOnly }) {
         <div className="day-title">{`${dayData.day} — ${dayData.label}`}</div>
         <div className="day-badge">{`${dayData.exercises.length} ćwiczeń`}</div>
       </div>
+      
+      {dayData.exercises && dayData.exercises.length > 0 && (
+        <MuscleMap dayExercises={dayData.exercises} />
+      )}
+
       <div className="exercises-grid">
         {dayData.exercises.map((ex, ei) => (
-          <ExerciseCard key={ex.id + ei + ex.sets + ex.reps} ex={ex} dayIdx={dayIdx} exIdx={ei} onFeedback={onFeedback} readOnly={readOnly} />
+          <ExerciseCard 
+            key={ex.id + ei + ex.sets + ex.reps} 
+            ex={ex} 
+            dayIdx={dayIdx} 
+            exIdx={ei} 
+            onFeedback={onFeedback} 
+            readOnly={readOnly}
+            onEdit={() => setModalState({ isOpen: true, exIdx: ei, data: ex })}
+            onDelete={() => { if(window.confirm('Usunąć to ćwiczenie?')) onModifyPlan(dayIdx, 'delete', ei) }}
+          />
         ))}
       </div>
+
+      {!readOnly && onModifyPlan && (
+        <button 
+          className="btn-ghost" 
+          style={{width: '100%', marginTop: '15px', borderStyle: 'dashed', opacity: 0.8}} 
+          onClick={() => setModalState({ isOpen: true, exIdx: null, data: null })}
+        >
+          + Dodaj ćwiczenie
+        </button>
+      )}
+
+      <ExerciseModal
+        isOpen={modalState.isOpen}
+        initialData={modalState.data}
+        onClose={() => setModalState({ isOpen: false, exIdx: null, data: null })}
+        onSave={handleSaveModal}
+      />
     </div>
   );
 }

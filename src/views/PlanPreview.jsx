@@ -13,6 +13,21 @@ export default function PlanPreview({ plan, setPlan, onAccept, onReset }) {
   const handleFB = (di, ei, fb, sg) => setPlan(p => ({...p, week: p.week.map((d, i) => i !== di ? d : {...d, exercises: d.exercises.map((ex, j) => j !== ei ? ex : {...ex, feedback: fb, suggestion: sg})})}));
   const clean = s => s.replace(/[💪🏋️🔥🌱⚡🔱🏪🏠🤸✅🦵🦴]/g, '').trim();
 
+  // NOWE: Funkcja zarządzająca ręcznymi modyfikacjami w trybie podglądu (przed zapisem)
+  const handleModifyPlan = (di, action, ei, newData) => setPlan(p => {
+    return {
+      ...p, 
+      week: p.week.map((d, i) => {
+        if (i !== di) return d;
+        const exercises = [...(d.exercises || [])];
+        if (action === 'add') exercises.push(newData);
+        else if (action === 'edit') exercises[ei] = { ...exercises[ei], ...newData };
+        else if (action === 'delete') exercises.splice(ei, 1);
+        return { ...d, exercises };
+      })
+    };
+  });
+
   return (
     <div className="app-shell">
       <div className="top-bar">
@@ -36,7 +51,15 @@ export default function PlanPreview({ plan, setPlan, onAccept, onReset }) {
               <div className="stat-cell"><div className="stat-num">{totalSets}</div><div className="stat-lbl">Serii łącznie</div></div>
             </div>
             <div className="week-grid">
-              {week.map((d, i) => <DayBlock key={i} dayData={d} dayIdx={i} onFeedback={handleFB} />)}
+              {week.map((d, i) => (
+                <DayBlock 
+                  key={i} 
+                  dayData={d} 
+                  dayIdx={i} 
+                  onFeedback={handleFB} 
+                  onModifyPlan={handleModifyPlan} 
+                />
+              ))}
             </div>
           </div>
           <div className="accept-bar">

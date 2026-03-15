@@ -32,6 +32,23 @@ export default function ProgressDashboard({ plan, setPlan, sessions, setSessions
     return np;
   });
 
+  // NOWE: Funkcja zarządzająca ręcznymi modyfikacjami
+  const handleModifyPlan = (di, action, ei, newData) => setPlan(p => {
+    const np = {
+      ...p, 
+      week: p.week.map((d, i) => {
+        if (i !== di) return d;
+        const exercises = [...(d.exercises || [])];
+        if (action === 'add') exercises.push(newData);
+        else if (action === 'edit') exercises[ei] = { ...exercises[ei], ...newData };
+        else if (action === 'delete') exercises.splice(ei, 1);
+        return { ...d, exercises };
+      })
+    };
+    savePlan(np); // Zapisujemy zmiany do localStorage
+    return np;
+  });
+
   return (
     <div className="app-shell">
       <div className="top-bar">
@@ -121,7 +138,15 @@ export default function ProgressDashboard({ plan, setPlan, sessions, setSessions
                 </div>
               </div>
               <div className="week-grid">
-                {plan.week.map((d, i) => <DayBlock key={i} dayData={d} dayIdx={i} onFeedback={handleFB} />)}
+                {plan.week.map((d, i) => (
+                  <DayBlock 
+                    key={i} 
+                    dayData={d} 
+                    dayIdx={i} 
+                    onFeedback={handleFB} 
+                    onModifyPlan={handleModifyPlan} 
+                  />
+                ))}
               </div>
             </div>
           </div>
