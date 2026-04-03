@@ -10,6 +10,13 @@ export default function ProgressDashboard({ plan, setPlan, sessions, setSessions
   const [panelOpen, setPanelOpen] = useState(false);
   const [toast, setToast] = useState(null);
 
+  // Dane profilu użytkownika
+  const [userEmail] = useState(localStorage.getItem('evotrain_user') || 'Nieznany użytkownik');
+  const [userParams, setUserParams] = useState(() => {
+    const saved = localStorage.getItem('evotrain_user_params');
+    return saved ? JSON.parse(saved) : { weight: '', height: '', age: '' };
+  });
+
   const streak = useMemo(() => calcStreak(sessions), [sessions]);
   const thisWeek = useMemo(() => thisWeekCount(sessions), [sessions]);
   const totalVol = useMemo(() => sessions.reduce((t, s) => t + (s.totalVol || 0), 0), [sessions]);
@@ -24,7 +31,13 @@ export default function ProgressDashboard({ plan, setPlan, sessions, setSessions
     showToast('Sesja zapisana! ✓');
   };
 
-  const clean = s => s.replace(/[💪🏋️🔥🌱⚡🔱🏪🏠🤸✅🦵🦴]/g, '').trim();
+  const handleSaveParams = (e) => {
+    e.preventDefault();
+    localStorage.setItem('evotrain_user_params', JSON.stringify(userParams));
+    showToast('Parametry zostały zapisane! ✓');
+  };
+
+  const clean = s => s ? s.replace(/[💪🏋️🔥🌱⚡🔱🏪🏠🤸✅🦵🦴]/g, '').trim() : '';
 
   const handleFB = (di, ei, fb, sg) => setPlan(p => {
     const np = {...p, week: p.week.map((d, i) => i !== di ? d : {...d, exercises: d.exercises.map((ex, j) => j !== ei ? ex : {...ex, feedback: fb, suggestion: sg})})};
@@ -32,7 +45,6 @@ export default function ProgressDashboard({ plan, setPlan, sessions, setSessions
     return np;
   });
 
-  // NOWE: Funkcja zarządzająca ręcznymi modyfikacjami
   const handleModifyPlan = (di, action, ei, newData) => setPlan(p => {
     const np = {
       ...p, 
@@ -45,9 +57,14 @@ export default function ProgressDashboard({ plan, setPlan, sessions, setSessions
         return { ...d, exercises };
       })
     };
-    savePlan(np); // Zapisujemy zmiany do localStorage
+    savePlan(np); 
     return np;
   });
+
+  const handleLogout = () => {
+    localStorage.removeItem('evotrain_user');
+    window.location.reload(); 
+  };
 
   return (
     <div className="app-shell">
@@ -56,8 +73,19 @@ export default function ProgressDashboard({ plan, setPlan, sessions, setSessions
         <div className="top-nav">
           <button className={`top-nav-btn${tab === 'progress' ? ' active' : ''}`} onClick={() => setTab('progress')}>Postęp</button>
           <button className={`top-nav-btn${tab === 'plan' ? ' active' : ''}`} onClick={() => setTab('plan')}>Plan</button>
+          <button className={`top-nav-btn${tab === 'profile' ? ' active' : ''}`} onClick={() => setTab('profile')}>Profil</button>
         </div>
-        <div className="phase-indicator"><div className="phase-dot"></div>DASHBOARD</div>
+        
+        <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+          <div className="phase-indicator"><div className="phase-dot"></div>DASHBOARD</div>
+          <button 
+            onClick={handleLogout} 
+            className="btn-ghost" 
+            style={{ padding: '6px 14px', fontSize: '0.75rem', borderColor: '#ff444455', color: '#ff4444' }}
+          >
+            Wyloguj
+          </button>
+        </div>
       </div>
 
       {tab === 'progress' && (
@@ -88,39 +116,31 @@ export default function ProgressDashboard({ plan, setPlan, sessions, setSessions
             </div>
 
             <div className="sessions-section">
-              <div className="section-title">
-                <span>OSTATNIE SESJE</span>
-                {sessions.length > 0 && <span style={{fontSize: '.7rem', color: 'var(--muted)', fontFamily: 'JetBrains Mono,monospace'}}>{sessions.length} łącznie</span>}
-              </div>
+              <div className="section-title">OSTATNIE SESJE</div>
               {sessions.length === 0 ? (
                 <div className="empty-state">
                   <div className="empty-icon">📋</div>
                   <div className="empty-title">BRAK SESJI</div>
-                  <div className="empty-text">Zaloguj swój pierwszy trening aby<br/>zacząć śledzić postępy i statystyki.</div>
-                  <button className="btn-accept" style={{maxWidth: '220px', margin: '0 auto', fontSize: '.9rem', letterSpacing: '1px'}} onClick={() => setShowModal(true)}>+ Zaloguj trening</button>
+                  <button className="btn-accept" style={{maxWidth: '220px', margin: '0 auto'}} onClick={() => setShowModal(true)}>+ Zaloguj trening</button>
                 </div>
               ) : (
                 sessions.slice(0, 8).map(s => (
                   <div key={s.id} className="session-card">
                     <div className="session-info">
                       <div className="session-label">{s.dayLabel}</div>
-                      <div className="session-date">{new Date(s.date).toLocaleDateString('pl-PL', {weekday: 'short', day: 'numeric', month: 'long', year: 'numeric'})}</div>
+                      <div className="session-date">{new Date(s.date).toLocaleDateString('pl-PL')}</div>
                     </div>
                     <div className="session-stats">
                       <div className="s-stat"><div className="s-val">{s.totalSets}</div><div className="s-lbl">Serie</div></div>
-                      <div className="s-stat"><div className="s-val">{s.totalVol > 999 ? Math.round(s.totalVol / 1000) + 'k' : s.totalVol}</div><div className="s-lbl">Vol</div></div>
+                      <div className="s-stat"><div className="s-val">{s.totalVol}</div><div className="s-lbl">Vol</div></div>
                     </div>
                   </div>
                 ))
               )}
             </div>
-            <div style={{paddingTop: '8px'}}>
-              <button className="btn-ghost" onClick={() => { if(window.confirm('Tworzenie nowego planu usunie bieżące dane. Kontynuować?')) { clearAll(); onNewPlan(); } }}>← Nowy wywiad</button>
-            </div>
           </div>
           <button className="log-fab" onClick={() => setShowModal(true)}>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-            <span>Zaloguj trening</span>
+            <span>+ Zaloguj trening</span>
           </button>
         </div>
       )}
@@ -131,30 +151,76 @@ export default function ProgressDashboard({ plan, setPlan, sessions, setSessions
             <div className="plan-content">
               <div className="dash-header">
                 <div className="dash-title">AKTYWNY <span>PLAN</span></div>
-                <div className="dash-meta">
-                  <div className="meta-pill"><span className="dot"></span>{clean(plan.profile.goal)}</div>
-                  <div className="meta-pill"><span className="dot"></span>{clean(plan.profile.equipment)}</div>
-                  {plan.acceptedAt && <div className="meta-pill"><span className="dot"></span>Zaakceptowano: {new Date(plan.acceptedAt).toLocaleDateString('pl-PL')}</div>}
-                </div>
               </div>
               <div className="week-grid">
                 {plan.week.map((d, i) => (
-                  <DayBlock 
-                    key={i} 
-                    dayData={d} 
-                    dayIdx={i} 
-                    onFeedback={handleFB} 
-                    onModifyPlan={handleModifyPlan} 
-                  />
+                  <DayBlock key={i} dayData={d} dayIdx={i} onFeedback={handleFB} onModifyPlan={handleModifyPlan} />
                 ))}
               </div>
             </div>
           </div>
           {panelOpen && <CorrectionPanel plan={plan} onUpdatePlan={p => { setPlan(prev => { const np = p(prev); savePlan(np); return np; }); }} onClose={() => setPanelOpen(false)} />}
-          <button className={`ai-fab${panelOpen ? ' active' : ''}`} onClick={() => setPanelOpen(!panelOpen)} style={panelOpen ? {right: 'calc(var(--panel-w) + 16px)'} : {}}>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
-            <span>{panelOpen ? 'Zamknij AI' : 'Koryguj z AI'}</span>
+          <button className="ai-fab" onClick={() => setPanelOpen(!panelOpen)}>
+            <span>AI Korekta</span>
           </button>
+        </div>
+      )}
+
+      {tab === 'profile' && (
+        <div className="progress-shell">
+          <div className="progress-content">
+            <div className="section-title">TWÓJ PROFIL</div>
+            <div className="ex-card" style={{ marginBottom: '20px' }}>
+              <div style={{ color: 'var(--muted)', fontSize: '0.8rem', marginBottom: '4px' }}>Zalogowany jako:</div>
+              <div style={{ color: 'var(--neon)', fontWeight: 'bold', fontSize: '1.2rem' }}>{userEmail}</div>
+            </div>
+
+            <div className="section-title">CEL I PARAMETRY PLANU</div>
+            <div className="ex-card" style={{ marginBottom: '20px', borderLeft: '4px solid var(--neon)' }}>
+              <div style={{ fontSize: '1.1rem', fontWeight: 'bold', color: '#fff' }}>{clean(plan.profile.goal)}</div>
+              <div style={{ color: 'var(--muted)', fontSize: '0.85rem', marginTop: '8px' }}>
+                Doświadczenie: {clean(plan.profile.experience)} | Sprzęt: {clean(plan.profile.equipment)}
+              </div>
+            </div>
+
+            <div className="section-title">PARAMETRY FIZYCZNE</div>
+            <form onSubmit={handleSaveParams} className="ex-card" style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                  <label style={{ fontSize: '0.8rem', color: 'var(--muted)' }}>Waga (kg)</label>
+                  <input 
+                    type="number" 
+                    value={userParams.weight} 
+                    onChange={e => setUserParams({...userParams, weight: e.target.value})}
+                    style={{ padding: '10px', background: '#1a1a1a', border: '1px solid #333', color: '#fff', borderRadius: '8px', outline: 'none' }}
+                  />
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                  <label style={{ fontSize: '0.8rem', color: 'var(--muted)' }}>Wzrost (cm)</label>
+                  <input 
+                    type="number" 
+                    value={userParams.height} 
+                    onChange={e => setUserParams({...userParams, height: e.target.value})}
+                    style={{ padding: '10px', background: '#1a1a1a', border: '1px solid #333', color: '#fff', borderRadius: '8px', outline: 'none' }}
+                  />
+                </div>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                <label style={{ fontSize: '0.8rem', color: 'var(--muted)' }}>Wiek</label>
+                <input 
+                  type="number" 
+                  value={userParams.age} 
+                  onChange={e => setUserParams({...userParams, age: e.target.value})}
+                  style={{ padding: '10px', background: '#1a1a1a', border: '1px solid #333', color: '#fff', borderRadius: '8px', outline: 'none' }}
+                />
+              </div>
+              <button type="submit" className="btn-accept" style={{ marginTop: '10px', width: '100%' }}>Zapisz parametry</button>
+            </form>
+
+            <div style={{ marginTop: '30px' }}>
+              <button className="btn-ghost" onClick={() => { if(window.confirm('To usunie bieżący plan i historię. Kontynuować?')) { clearAll(); onNewPlan(); } }}>Zrestartuj plan (Nowy Wywiad)</button>
+            </div>
+          </div>
         </div>
       )}
 

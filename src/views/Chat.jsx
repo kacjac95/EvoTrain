@@ -43,6 +43,15 @@ export default function Chat({ onComplete }) {
     setOpts([]);
     if(qi + 1 >= QUESTIONS.length) {
       setTyping(true);
+      
+      // Zapisujemy parametry fizyczne pobrane z czatu do localStorage
+      const userParams = {
+        age: next.age || '',
+        weight: next.weight || '',
+        height: next.height || ''
+      };
+      localStorage.setItem('evotrain_user_params', JSON.stringify(userParams));
+
       setTimeout(() => {
         setTyping(false);
         pushMsg('ai', '🧬 Profil skompletowany. Generuję spersonalizowany plan...');
@@ -90,7 +99,15 @@ export default function Chat({ onComplete }) {
         <div className="input-inner">
           {opts.length > 0 && <div className="quick-btns">{opts.map(o => <button key={o} className="quick-btn" onClick={() => handleAnswer(o)}>{o}</button>)}</div>}
           <div className="input-row">
-            <input className="text-input" placeholder={opts.length ? 'Wybierz lub wpisz własną...' : 'Wpisz odpowiedź...'} value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleSend()} disabled={typing || qi < 0 || qi >= QUESTIONS.length} />
+            <input 
+              className="text-input" 
+              placeholder={opts.length ? 'Wybierz lub wpisz własną...' : 'Wpisz odpowiedź...'} 
+              value={input} 
+              onChange={e => setInput(e.target.value)} 
+              onKeyDown={e => e.key === 'Enter' && handleSend()} 
+              disabled={typing || qi < 0 || qi >= QUESTIONS.length} 
+              type={opts.length === 0 ? "number" : "text"} // Ułatwienie wpisywania liczb na telefonach
+            />
             <button className="send-btn" onClick={handleSend} disabled={!input.trim() || typing || qi < 0 || qi >= QUESTIONS.length}>{qi === QUESTIONS.length - 1 ? 'GENERUJ PLAN →' : 'WYŚLIJ →'}</button>
           </div>
         </div>
