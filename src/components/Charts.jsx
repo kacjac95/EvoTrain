@@ -52,6 +52,13 @@ export function ExProgressChart({ sessions }) {
   }, [sessions]);
 
   useEffect(() => {
+    // Ustawienie domyślnego ćwiczenia, jeśli jest dostępne a nie zostało wybrane
+    if (exInSess.length > 0 && !selId) {
+      setSelId(exInSess[0].id);
+    }
+  }, [exInSess, selId]);
+
+  useEffect(() => {
     if(!selId || !canvasRef.current) return;
     const pd = getExProgress(sessions, selId);
     if(chartRef.current) { chartRef.current.destroy(); chartRef.current = null; }
@@ -62,17 +69,60 @@ export function ExProgressChart({ sessions }) {
       data: {
         labels: pd.map(d => d.date),
         datasets: [
-          { label: 'Max ciężar (kg)', data: pd.map(d => d.maxWeight || null), borderColor: '#ccff00', backgroundColor: 'rgba(204,255,0,0.08)', pointBackgroundColor: '#ccff00', pointRadius: 5, borderWidth: 2, tension: .3, fill: true },
-          { label: 'Łączne powt.', data: pd.map(d => d.totalReps), borderColor: '#50b4ff', backgroundColor: 'rgba(80,180,255,0.06)', pointBackgroundColor: '#50b4ff', pointRadius: 5, borderWidth: 2, tension: .3, fill: true, yAxisID: 'y2' }
+          { 
+            label: 'Max ciężar (kg)', 
+            data: pd.map(d => d.maxWeight || null), 
+            borderColor: '#ccff00', 
+            backgroundColor: 'rgba(204,255,0,0.08)', 
+            pointBackgroundColor: '#ccff00', 
+            pointRadius: 5, 
+            borderWidth: 2, 
+            tension: .3, 
+            fill: true,
+            yAxisID: 'y' // Przypisanie do lewej osi
+          },
+          { 
+            label: 'Łączne powt.', 
+            data: pd.map(d => d.totalReps), 
+            borderColor: '#50b4ff', 
+            backgroundColor: 'rgba(80,180,255,0.06)', 
+            pointBackgroundColor: '#50b4ff', 
+            pointRadius: 5, 
+            borderWidth: 2, 
+            tension: .3, 
+            fill: true, 
+            yAxisID: 'y2' // Przypisanie do prawej osi
+          }
         ]
       },
       options: {
-        responsive: true, maintainAspectRatio: false,
-        plugins: { legend: { display: true, labels: { color: '#555', font: { family: 'JetBrains Mono', size: 10 }, boxWidth: 10 } } },
+        responsive: true, 
+        maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: { 
+          legend: { display: true, labels: { color: '#555', font: { family: 'JetBrains Mono', size: 10 }, boxWidth: 10 } } 
+        },
         scales: {
-          x: { grid: { color: 'rgba(255,255,255,0.04)' }, ticks: { color: '#555', font: { family: 'JetBrains Mono', size: 10 } } },
-          y: { grid: { color: 'rgba(255,255,255,0.04)' }, ticks: { color: '#555', font: { family: 'JetBrains Mono', size: 10 } }, beginAtZero: true },
-          y2: { display: false, beginAtZero: true }
+          x: { 
+            grid: { color: 'rgba(255,255,255,0.04)' }, 
+            ticks: { color: '#555', font: { family: 'JetBrains Mono', size: 10 } } 
+          },
+          y: { 
+            type: 'linear',
+            position: 'left',
+            display: true,
+            grid: { color: 'rgba(255,255,255,0.04)' }, 
+            ticks: { color: '#555', font: { family: 'JetBrains Mono', size: 10 } }, 
+            beginAtZero: true 
+          },
+          y2: { 
+            type: 'linear',
+            position: 'right', // Ustawienie osi po prawej stronie
+            display: true,     // Włączenie widoczności
+            beginAtZero: true,
+            grid: { drawOnChartArea: false }, // Wyłączenie siatki dla tej osi, żeby uniknąć bałaganu
+            ticks: { color: '#555', font: { family: 'JetBrains Mono', size: 10 } }
+          }
         }
       }
     });
@@ -82,12 +132,12 @@ export function ExProgressChart({ sessions }) {
   if(!exInSess.length) return <div style={{textAlign: 'center', color: 'var(--muted)', padding: '40px 0', fontSize: '.82rem'}}>Zaloguj trening, aby śledzić postępy</div>;
 
   return (
-    <div>
-      <select className="ex-select" value={selId} onChange={e => setSelId(e.target.value)}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      <select className="ex-select" value={selId} onChange={e => setSelId(e.target.value)} style={{ marginBottom: '10px' }}>
         <option value="">— wybierz ćwiczenie —</option>
         {exInSess.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
       </select>
-      {selId && <div className="chart-wrap"><canvas ref={canvasRef}></canvas></div>}
+      {selId && <div className="chart-wrap" style={{ position: 'relative', flexGrow: 1, minHeight: '180px' }}><canvas ref={canvasRef}></canvas></div>}
     </div>
   );
 }

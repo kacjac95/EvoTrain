@@ -1,6 +1,6 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { QUESTIONS } from '../config/data';
-import { generatePlan } from '../utils/helpers';
+import { generatePlan, saveParams } from '../utils/helpers'; // Dodano import saveParams
 import { Logo } from '../components/Common';
 
 export default function Chat({ onComplete }) {
@@ -35,22 +35,25 @@ export default function Chat({ onComplete }) {
 
   useEffect(() => { ref.current?.scrollIntoView({behavior: 'smooth'}); }, [msgs, typing, opts]);
 
-  const handleAnswer = ans => {
+  // Funkcja zmieniona na async, aby obsłużyć zapis do Supabase
+  const handleAnswer = async ans => {
     pushMsg('user', ans);
     const q = QUESTIONS[qi];
     const next = {...answers, [q.key]: ans};
     setAnswers(next); 
     setOpts([]);
+    
     if(qi + 1 >= QUESTIONS.length) {
       setTyping(true);
       
-      // Zapisujemy parametry fizyczne pobrane z czatu do localStorage
       const userParams = {
         age: next.age || '',
         weight: next.weight || '',
         height: next.height || ''
       };
-      localStorage.setItem('evotrain_user_params', JSON.stringify(userParams));
+
+      // POPRAWKA: Użycie helpera saveParams zamiast bezpośredniego zapisu do localStorage
+      await saveParams(userParams);
 
       setTimeout(() => {
         setTyping(false);
@@ -106,7 +109,7 @@ export default function Chat({ onComplete }) {
               onChange={e => setInput(e.target.value)} 
               onKeyDown={e => e.key === 'Enter' && handleSend()} 
               disabled={typing || qi < 0 || qi >= QUESTIONS.length} 
-              type={opts.length === 0 ? "number" : "text"} // Ułatwienie wpisywania liczb na telefonach
+              type={opts.length === 0 ? "number" : "text"}
             />
             <button className="send-btn" onClick={handleSend} disabled={!input.trim() || typing || qi < 0 || qi >= QUESTIONS.length}>{qi === QUESTIONS.length - 1 ? 'GENERUJ PLAN →' : 'WYŚLIJ →'}</button>
           </div>

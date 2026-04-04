@@ -14,7 +14,7 @@ export function CorrectionPanel({ plan, onUpdatePlan, onClose }) {
 
   const planCtx = useMemo(() => ({
     profile: plan.profile,
-    week: plan.week.map(d => ({day: d.day, type: d.type, label: d.label, exercises: d.exercises?.map(e => ({id: e.id, name: e.name, cat: e.cat, sets: e.sets, reps: e.reps, rest: e.rest}))}))
+    week: plan.week.map(d => ({day: d.day, type: d.type, label: d.label, exercises: d.exercises?.map(e => ({id: e.id, name: e.name, cat: e.cat, sets: e.sets, reps: e.reps, rest: e.rest, weight: e.weight}))}))
   }), [plan]);
 
   const applyChanges = (week, changes) => {
@@ -22,12 +22,12 @@ export function CorrectionPanel({ plan, onUpdatePlan, onClose }) {
     for(const ch of changes) {
       const d = w[ch.dayIndex]; 
       if(!d?.exercises) continue;
-      if(ch.type === 'update_sets') w[ch.dayIndex] = {...d, exercises: d.exercises.map((ex, i) => i === ch.exIndex ? {...ex, sets: ch.sets ?? ex.sets, reps: ch.reps ?? ex.reps, rest: ch.rest ?? ex.rest, aiUpdated: true} : ex)};
+      if(ch.type === 'update_sets') w[ch.dayIndex] = {...d, exercises: d.exercises.map((ex, i) => i === ch.exIndex ? {...ex, sets: ch.sets ?? ex.sets, reps: ch.reps ?? ex.reps, rest: ch.rest ?? ex.rest, weight: ch.weight ?? ex.weight, aiUpdated: true} : ex)};
       if(ch.type === 'swap_exercise') {
         const ne = EXERCISES.find(e => e.id === ch.newExId); 
         if(!ne) continue;
         const oe = d.exercises[ch.exIndex];
-        w[ch.dayIndex] = {...d, exercises: d.exercises.map((ex, i) => i === ch.exIndex ? {...ne, sets: oe?.sets || 3, reps: oe?.reps || '8-12', rest: oe?.rest || '90s', feedback: null, suggestion: null, aiUpdated: true} : ex)};
+        w[ch.dayIndex] = {...d, exercises: d.exercises.map((ex, i) => i === ch.exIndex ? {...ne, sets: oe?.sets || 3, reps: oe?.reps || '8-12', rest: oe?.rest || '90s', weight: oe?.weight || '', feedback: null, suggestion: null, aiUpdated: true} : ex)};
       }
     }
     return w;
@@ -103,7 +103,7 @@ export function CorrectionPanel({ plan, onUpdatePlan, onClose }) {
   );
 }
 
-export function SessionLogModal({ plan, onSave, onClose }) {
+export function SessionLogModal({ plan, sessions = [], onSave, onClose }) {
   const trainingDays = plan.week.filter(d => d.type === 'training');
   const [selDay, setSelDay] = useState(null);
   const [exSets, setExSets] = useState({});
@@ -111,12 +111,33 @@ export function SessionLogModal({ plan, onSave, onClose }) {
   useEffect(() => {
     if(selDay !== null && trainingDays[selDay]) {
       const init = {};
+      const getPreviousWeights = (exId) => {
+        if (!sessions || sessions.length === 0) return [];
+        for (const s of sessions) {
+          const foundEx = s.exercises?.find(e => e.id === exId);
+          if (foundEx && foundEx.sets) {
+            return foundEx.sets.map(set => set.weight);
+          }
+        }
+        return [];
+      };
+
       trainingDays[selDay].exercises.forEach(ex => {
-        init[ex.id] = Array(ex.sets).fill(null).map(() => ({reps: '', weight: ''}));
+        const targetReps = ex.reps ? parseInt(ex.reps.toString().match(/\d+/)?.[0] || '') : '';
+        const targetWeight = ex.weight ? parseFloat(ex.weight.toString().match(/[\d.]+/)?.[0] || '') : '';
+        const prevWeights = getPreviousWeights(ex.id);
+
+        init[ex.id] = Array(Number(ex.sets) || 1).fill(null).map((_, i) => {
+          let w = prevWeights[i] !== undefined ? prevWeights[i] : prevWeights[prevWeights.length - 1];
+          return {
+            reps: targetReps || '', 
+            weight: w !== undefined && w !== null && w !== '' ? w : (targetWeight || '')
+          };
+        });
       });
       setExSets(init);
     }
-  }, [selDay]);
+  }, [selDay, plan, sessions]);
 
   const updSet = (exId, si, field, val) => setExSets(prev => ({...prev, [exId]: prev[exId].map((s, i) => i === si ? {...s, [field]: val} : s)}));
   const addSet = exId => setExSets(prev => ({...prev, [exId]: [...(prev[exId] || []), {reps: '', weight: ''}]}));
@@ -164,7 +185,7 @@ export function SessionLogModal({ plan, onSave, onClose }) {
                 <div key={ex.id} className="ex-log-block">
                   <div className="ex-log-header">
                     <div className="ex-log-name">{ex.name}</div>
-                    <div className="ex-log-cat">{ex.cat} · plan: {ex.sets}×{ex.reps}</div>
+                    <div className="ex-log-cat">{ex.cat} · plan: {ex.sets}×{ex.reps}{ex.weight ? ` · ${ex.weight}kg` : ''}</div>
                   </div>
                   <div className="set-input-grid">
                     {(exSets[ex.id] || []).map((set, si) => (
@@ -185,6 +206,56 @@ export function SessionLogModal({ plan, onSave, onClose }) {
         <div className="modal-footer">
           <button className="btn-ghost" onClick={onClose}>Anuluj</button>
           <button className="save-session-btn" onClick={handleSave} disabled={!canSave}>✓ ZAPISZ SESJĘ</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// NOWY KOMPONENT: Podgląd szczegółów historycznej sesji
+export function SessionDetailModal({ session, onClose }) {
+  if (!session) return null;
+  return (
+    <div className="modal-overlay" onClick={e => { if(e.target === e.currentTarget) onClose(); }}>
+      <div className="modal-sheet">
+        <div className="modal-handle"></div>
+        <div className="modal-header">
+          <div className="modal-title">SZCZEGÓŁY TRENINGU</div>
+          <button className="modal-close" onClick={onClose}>✕</button>
+        </div>
+        <div className="modal-body">
+          <div style={{fontSize: '1.2rem', color: 'var(--neon)', marginBottom: '4px', fontWeight: 'bold'}}>{session.dayLabel}</div>
+          <div style={{fontSize: '.85rem', color: 'var(--muted)', marginBottom: '16px', fontFamily: 'JetBrains Mono,monospace'}}>
+            {new Date(session.date).toLocaleDateString('pl-PL', {weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'})}
+          </div>
+
+          <div className="session-stats" style={{marginBottom: '20px', background: '#1a1a1a', padding: '10px', borderRadius: '8px', border: '1px solid #333'}}>
+            <div className="s-stat"><div className="s-val">{session.totalSets}</div><div className="s-lbl">Serie</div></div>
+            <div className="s-stat"><div className="s-val">{session.totalVol > 9999 ? Math.round(session.totalVol / 1000) + 'k' : session.totalVol} kg</div><div className="s-lbl">Wolumen</div></div>
+          </div>
+
+          <hr className="modal-divider" />
+
+          {session.exercises.map(ex => (
+            <div key={ex.id} className="ex-log-block" style={{marginBottom: '15px', padding: '10px', background: '#111', borderRadius: '8px'}}>
+              <div className="ex-log-header" style={{marginBottom: '10px'}}>
+                <div className="ex-log-name" style={{fontSize: '0.95rem'}}>{ex.name}</div>
+              </div>
+              <div className="set-input-grid">
+                {ex.sets.map((set, si) => (
+                  <div key={si} className="set-input-row" style={{justifyContent: 'flex-start', gap: '15px', padding: '4px 0', borderBottom: si !== ex.sets.length -1 ? '1px solid #222' : 'none'}}>
+                    <div className="set-num-label" style={{background: '#222'}}>{si + 1}</div>
+                    <div style={{color: '#fff', fontSize: '0.95rem', width: '60px'}}>{set.reps} powt.</div>
+                    <div className="input-sep">×</div>
+                    <div style={{color: 'var(--neon)', fontSize: '0.95rem', fontWeight: 'bold'}}>{set.weight} kg</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="modal-footer">
+          <button className="btn-accept" onClick={onClose} style={{width: '100%'}}>Zamknij</button>
         </div>
       </div>
     </div>

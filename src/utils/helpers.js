@@ -1,12 +1,37 @@
 import { EXERCISES } from '../config/data';
+import { supabase } from '../config/supabase';
 
 const SK = { PLAN:'evotrain_plan_v2', SESSIONS:'evotrain_sessions_v2' };
 
 export const loadPlan = () => { try { return JSON.parse(localStorage.getItem(SK.PLAN)); } catch { return null; } };
-export const savePlan = p => { localStorage.setItem(SK.PLAN, JSON.stringify(p)); };
 export const loadSess = () => { try { return JSON.parse(localStorage.getItem(SK.SESSIONS)) || []; } catch { return []; } };
-export const saveSess = s => { localStorage.setItem(SK.SESSIONS, JSON.stringify(s)); };
-export const clearAll = () => { localStorage.removeItem(SK.PLAN); localStorage.removeItem(SK.SESSIONS); };
+
+// Zapisujemy lokalnie i wysyłamy do Supabase
+export const savePlan = async p => { 
+  localStorage.setItem(SK.PLAN, JSON.stringify(p)); 
+  const { data: { user } } = await supabase.auth.getUser();
+  if (user) await supabase.from('user_data').update({ plan: p }).eq('user_id', user.id);
+};
+
+export const saveSess = async s => { 
+  localStorage.setItem(SK.SESSIONS, JSON.stringify(s)); 
+  const { data: { user } } = await supabase.auth.getUser();
+  if (user) await supabase.from('user_data').update({ sessions: s }).eq('user_id', user.id);
+};
+
+// Nowa funkcja do zapisywania parametrów fizycznych
+export const saveParams = async params => {
+  localStorage.setItem('evotrain_user_params', JSON.stringify(params));
+  const { data: { user } } = await supabase.auth.getUser();
+  if (user) await supabase.from('user_data').update({ params }).eq('user_id', user.id);
+};
+
+export const clearAll = async () => { 
+  localStorage.removeItem(SK.PLAN); 
+  localStorage.removeItem(SK.SESSIONS); 
+  const { data: { user } } = await supabase.auth.getUser();
+  if (user) await supabase.from('user_data').update({ plan: null, sessions: [] }).eq('user_id', user.id);
+};
 
 export function generatePlan(profile) {
   const days = parseInt(profile.frequency) || 3;
@@ -111,18 +136,9 @@ ID ćwiczeń: sq,bp,dl,ohp,row,pu,pu_d,chin,pull,lunge,dbs,dbr,rdl,gobsq,pike,in
 
 Gdy ROZMAWIASZ bez zmian — odpowiedz zwykłym tekstem po polsku. Krótko, maks 3 zdania.`;
 
-  // W wersji v1, gdzie systemInstruction nie jest rozpoznawane, 
-  // wstrzykujemy instrukcję jako pierwszą wiadomość użytkownika.
   const contents = [
-    {
-      role: 'user',
-      parts: [{ text: `INSTRUKCJA I KONTEKST: ${systemText}` }]
-    },
-    {
-      role: 'model',
-      parts: [{ text: "Zrozumiałem instrukcje. Będę odpowiadać zgodnie z Twoimi wymaganiami (JSON dla zmian, tekst dla rozmowy). W czym mogę pomóc?" }]
-    },
-    // Mapujemy resztę historii użytkownika
+    { role: 'user', parts: [{ text: `INSTRUKCJA I KONTEKST: ${systemText}` }] },
+    { role: 'model', parts: [{ text: "Zrozumiałem instrukcje. Będę odpowiadać zgodnie z Twoimi wymaganiami (JSON dla zmian, tekst dla rozmowy). W czym mogę pomóc?" }] },
     ...history.map(m => ({
       role: m.from === 'user' ? 'user' : 'model',
       parts: [{ text: m.text }]
@@ -135,25 +151,16 @@ Gdy ROZMAWIASZ bez zmian — odpowiedz zwykłym tekstem po polsku. Krótko, maks
     const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite-preview:generateContent?key=${apiKey}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: contents // Usunięto problematyczne pole systemInstruction
-      })
+      body: JSON.stringify({ contents })
     });
 
-    if (!res.ok) {
-      const errorData = await res.json();
-      console.error('Błąd Gemini API:', errorData);
-      throw new Error(`Błąd API: ${res.status}`);
-    }
+    if (!res.ok) throw new Error(`Błąd API: ${res.status}`);
 
     const data = await res.json();
-    
     if (data.candidates && data.candidates[0]?.content?.parts?.[0]?.text) {
       return data.candidates[0].content.parts[0].text.trim();
     }
-    
     return "AI nie zwróciło żadnej treści.";
-
   } catch (err) {
     console.error('Błąd połączenia z Gemini:', err);
     return "Wystąpił błąd podczas próby kontaktu z trenerem AI.";
