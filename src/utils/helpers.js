@@ -43,7 +43,6 @@ export function generatePlan(profile) {
   const kn = profile.injuries.includes('kolanami');
   const sh = profile.injuries.includes('barkami');
 
-  // --- PARAMETRY FIZYCZNE ---
   const age = parseInt(profile.age) || 30;
   const weight = parseFloat(profile.weight) || 70;
   const height = parseFloat(profile.height) || 175;
@@ -59,46 +58,166 @@ export function generatePlan(profile) {
     if (kn && ['sq','lunge','bulg','gobsq','calf','lgcurl'].includes(ex.id)) return false;
     if (sh && ['ohp','pu_d','pike','facepl','dips','incbp'].includes(ex.id)) return false;
     
-    // Zabezpieczenia fizyczne: otyli początkujący z masą ciała nie podciągają się na start
     if (isOverweight && isBW && isBeg && ['pull', 'chin', 'dips'].includes(ex.id)) return false;
 
     if (isBW) return ex.equipment.every(e=>['bodyweight','pullup_bar','dip_bar'].includes(e));
     if (isDb) return ex.equipment.every(e=>['dumbbells','bodyweight','pullup_bar','bench'].includes(e));
+    
+    if (!isAdv && ex.diff === 'advanced') return false; 
+    if (isOlder && ex.diff === 'advanced') return false; 
     return true;
   });
-  
-  // Starsi lub początkujący użytkownicy nie dostają trudnych ćwiczeń
-  if (!isAdv || isBeg || isOlder) pool = pool.filter(e=>e.diff!=='advanced');
+
+  const scoreExercise = (ex) => {
+    let score = 0;
+    if (isBeg && ex.diff === 'beginner') score += 10;
+    if (!isBeg && !isAdv && ex.diff === 'intermediate') score += 10;
+    if (isAdv && ex.diff === 'advanced') score += 10;
+    if (isAdv && ex.diff === 'intermediate') score += 5;
+
+    if (isStr && ex.equipment.includes('barbell')) score += 8; 
+    if (isBulk && ex.equipment.includes('dumbbells')) score += 5; 
+    if (isBulk && ex.equipment.includes('cable')) score += 6;
+
+    if (isOlder && ex.equipment.includes('cable')) score += 5;
+    if (isOverweight && ex.equipment.includes('cable')) score += 3;
+
+    if (isFemale && (ex.muscleIds?.includes('gluteal') || ex.muscleIds?.includes('hamstring'))) score += 4;
+    return score;
+  };
 
   const push = pool.filter(e=>e.cat==='Push'), pull = pool.filter(e=>e.cat==='Pull'),
         legs = pool.filter(e=>e.cat==='Legs'), core = pool.filter(e=>e.cat==='Core');
-  const pick = (a,n)=>[...a].sort(()=>Math.random()-.5).slice(0,Math.min(n,a.length));
+        
+  const pick = (a, n, offset = 0) => {
+    if(!a.length) return [];
+    const sorted = [...a].sort((x, y) => {
+      const sX = scoreExercise(x);
+      const sY = scoreExercise(y);
+      if (sX !== sY) return sY - sX; 
+      return x.id.localeCompare(y.id); 
+    });
+    const res = [];
+    for(let i=0; i<n; i++){
+      res.push(sorted[(offset + i) % sorted.length]);
+    }
+    return Array.from(new Set(res)); 
+  };
   
-  // --- MODYFIKATORY SERII, POWTÓRZEŃ I PRZERW ---
+  // --- NAUKOWE MODYFIKATORY OBJĘTOŚCI (METAANALIZY SCHOENFELDA) ---
+  const targetSetsPerMuscle = isBeg ? 10 : (isAdv ? 18 : 14);
+  
+  let baseSets = isStr ? (isAdv ? 5 : 4) : (isBulk ? 4 : 3);
+  if (isOlder && baseSets > 3) baseSets -= 1; 
+
+  let baseReps = isStr ? '4-6' : isBulk ? '8-12' : '12-20';
+  if (isFemale && isBulk) baseReps = '10-14'; 
+
   let baseRest = isStr ? 180 : (isBulk ? 90 : 60);
   if (isOlder) baseRest += 30; 
   if (isOverweight) baseRest += 30; 
-  
-  let baseSets = isStr ? (isAdv ? 5 : 4) : (isBulk ? 4 : 3);
-  if (isOlder && baseSets > 3) baseSets -= 1; // Optymalizacja regeneracji dla +50
-
-  let baseReps = isStr ? '4-6' : isBulk ? '8-12' : '12-20';
-  if (isFemale && isBulk) baseReps = '10-14'; // Kobiety robią lekko wyższy zakres przy masie
 
   const setsConfig = { sets: baseSets, reps: baseReps, rest: baseRest + 's' };
   const mk = list => list.map(ex=>({...ex,...setsConfig,feedback:null,suggestion:null,aiUpdated:false}));
 
+  const exPerCat = Math.max(2, Math.ceil(targetSetsPerMuscle / baseSets));
+
   let td=[];
-  if(days<=2){ td=[{label:'FULL BODY A',exercises:mk([...pick(push,2),...pick(pull,2),...pick(legs,2),...pick(core,1)])},{label:'FULL BODY B',exercises:mk([...pick(push,2),...pick(pull,2),...pick(legs,2),...pick(core,1)])}]; }
-  else if(days===3){ td=[{label:'PUSH',exercises:mk([...pick(push,3),...pick(core,1)])},{label:'PULL',exercises:mk([...pick(pull,3),...pick(core,1)])},{label:'LEGS',exercises:mk([...pick(legs,3),...pick(core,1)])}]; }
-  else if(days===4){ td=[{label:'KLATKA & TRICEPS',exercises:mk(pick(push,4))},{label:'PLECY & BICEPS',exercises:mk(pick(pull,4))},{label:'NOGI',exercises:mk([...pick(legs,3),...pick(core,1)])},{label:'BARKI & CORE',exercises:mk([...pick(push.filter(e=>e.muscles.includes('Bark')||e.muscles.includes('bark')),2),...pick(core,2)])}]; }
-  else { td=[{label:'PUSH A',exercises:mk([...pick(push,4),...pick(core,1)])},{label:'PULL A',exercises:mk([...pick(pull,4),...pick(core,1)])},{label:'NOGI',exercises:mk(pick(legs,4))},{label:'PUSH B',exercises:mk(pick(push,3))},{label:'PULL B & CORE',exercises:mk([...pick(pull,3),...pick(core,2)])}]; }
+  if(days<=2){ 
+    const pFB = Math.ceil(exPerCat / 2);
+    td=[
+      {label:'FULL BODY A',exercises:mk([...pick(push, pFB, 0),...pick(pull, pFB, 0),...pick(legs, pFB, 0),...pick(core, 1, 0)])},
+      {label:'FULL BODY B',exercises:mk([...pick(push, pFB, pFB),...pick(pull, pFB, pFB),...pick(legs, pFB, pFB),...pick(core, 1, 1)])}
+    ];
+  }
+  else if(days===3){ 
+    td=[
+      {label:'PUSH',exercises:mk([...pick(push, exPerCat, 0),...pick(core, 1, 0)])},
+      {label:'PULL',exercises:mk([...pick(pull, exPerCat, 0),...pick(core, 1, 1)])},
+      {label:'LEGS',exercises:mk([...pick(legs, exPerCat, 0),...pick(core, 1, 2)])}
+    ];
+  }
+  else if(days===4){ 
+    const pA = Math.ceil(exPerCat/2), pB = exPerCat - pA;
+    td=[
+      {label:'UPPER A (Góra)',exercises:mk([...pick(push, pA, 0),...pick(pull, pA, 0)])},
+      {label:'LOWER A (Dół)',exercises:mk([...pick(legs, pA, 0),...pick(core, 1, 0)])},
+      {label:'UPPER B (Góra)',exercises:mk([...pick(push, pB, pA),...pick(pull, pB, pA)])},
+      {label:'LOWER B (Dół)',exercises:mk([...pick(legs, pB, pA),...pick(core, 1, 1)])}
+    ];
+  }
+  else { 
+    const pA = Math.ceil(exPerCat * 0.6), pB = exPerCat - pA;
+    td=[
+      {label:'PUSH',exercises:mk([...pick(push, pA, 0),...pick(core, 1, 0)])},
+      {label:'PULL',exercises:mk([...pick(pull, pA, 0),...pick(core, 1, 1)])},
+      {label:'LEGS',exercises:mk([...pick(legs, pA, 0)])},
+      {label:'UPPER',exercises:mk([...pick(push, pB, pA),...pick(pull, pB, pA)])},
+      {label:'LOWER',exercises:mk([...pick(legs, pB, pA),...pick(core, 1, 2)])}
+    ];
+  }
   td=td.map(d=>({...d,exercises:d.exercises.length?d.exercises:mk([...pick(push,2),...pick(pull,2)])}));
 
   const dn=['PONIEDZIAŁEK','WTOREK','ŚRODA','CZWARTEK','PIĄTEK','SOBOTA','NIEDZIELA'];
-  let ti=0;
-  const week = dn.map(day=>ti<td.length?{day,type:'training',...td[ti++]}:{day,type:'rest'});
+  let schedule = [0, 1, 2, 3, 4, 5, 6]; 
+  if (td.length === 2) schedule = [0, 3]; 
+  else if (td.length === 3) schedule = [0, 2, 4]; 
+  else if (td.length === 4) schedule = [0, 1, 3, 4]; 
+  else if (td.length >= 5) schedule = [0, 1, 3, 4, 5]; 
+
+  let ti = 0;
+  const week = dn.map((day, idx) => {
+    if (schedule.includes(idx) && ti < td.length) {
+      return { day, type: 'training', ...td[ti++] };
+    }
+    return { day, type: 'rest' };
+  });
+  
   return {week,profile,createdAt:Date.now()};
+}
+
+export async function optimizePlanWithAI(basePlan, profile) {
+  const systemText = `Jesteś ekspertem i głównym trenerem sztucznej inteligencji.
+Otrzymujesz wstępny szkielet planu treningowego wygenerowany przez algorytm oraz profil fizyczny i preferencje użytkownika.
+Twoim zadaniem jest zoptymalizować ten plan (dobór ćwiczeń, parametry serii, powtórzeń, czas przerw), aby idealnie pasował do profilu.
+
+PROFIL UŻYTKOWNIKA:
+${JSON.stringify(profile, null, 2)}
+
+WSTĘPNY PLAN (struktura do modyfikacji):
+${JSON.stringify(basePlan.week, null, 2)}
+
+INSTRUKCJE:
+1. Przeanalizuj sprzęt, doświadczenie, płeć, wagę, kontuzje i cel.
+2. Zoptymalizuj ćwiczenia, zakresy powtórzeń i czas przerw w podanym planie. Możesz edytować właściwości "sets", "reps" i "rest" w każdym ćwiczeniu.
+3. Musisz zwrócić TYLKO I WYŁĄCZNIE czysty tekst w formacie JSON reprezentujący zaktualizowaną tablicę "week". Bez żadnych znaczników markdown (nie używaj \`\`\`json), bez wstępów, bez podsumowań. Oczekiwany format to dokładnie tablica obiektów jak w otrzymanym WSTĘPNYM PLANIE.`;
+
+  const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+
+  try {
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite-preview:generateContent?key=${apiKey}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ role: 'user', parts: [{ text: systemText }] }]
+      })
+    });
+
+    if (!res.ok) throw new Error(`Błąd API optymalizacji: ${res.status}`);
+
+    const data = await res.json();
+    if (data.candidates && data.candidates[0]?.content?.parts?.[0]?.text) {
+      let aiText = data.candidates[0].content.parts[0].text.trim();
+      aiText = aiText.replace(/^```json/i, '').replace(/^```/i, '').replace(/```$/i, '').trim();
+      
+      const optimizedWeek = JSON.parse(aiText);
+      return { ...basePlan, week: optimizedWeek };
+    }
+    return basePlan;
+  } catch (err) {
+    console.error('Błąd podczas optymalizacji planu przez AI (fallback do algorytmu):', err);
+    return basePlan; 
+  }
 }
 
 export function adaptEx(ex, f) {

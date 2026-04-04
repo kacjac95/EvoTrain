@@ -1,6 +1,6 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { QUESTIONS } from '../config/data';
-import { generatePlan, saveParams } from '../utils/helpers'; 
+import { generatePlan, saveParams, optimizePlanWithAI } from '../utils/helpers'; 
 import { Logo } from '../components/Common';
 
 export default function Chat({ onComplete }) {
@@ -54,10 +54,24 @@ export default function Chat({ onComplete }) {
 
       await saveParams(userParams);
 
+      // KROK 1: Generowanie szkieletu planu
+      const basePlan = generatePlan(next);
+      
       setTimeout(() => {
         setTyping(false);
-        pushMsg('ai', '🧬 Profil skompletowany. Generuję spersonalizowany plan...');
-        setTimeout(() => onComplete(generatePlan(next)), 600);
+        pushMsg('ai', '🧬 Profil skompletowany. Generuję szkielet planu...');
+        
+        // KROK 2: Optymalizacja AI w tle
+        setTimeout(async () => {
+          pushMsg('ai', '🧠 AI analizuje i optymalizuje plan pod kątem Twoich parametrów...');
+          setTyping(true);
+          
+          const finalPlan = await optimizePlanWithAI(basePlan, next);
+          
+          setTyping(false);
+          onComplete(finalPlan);
+        }, 1200);
+
       }, 600);
     } else {
       askNext(qi + 1);
