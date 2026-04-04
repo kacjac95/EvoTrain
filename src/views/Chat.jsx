@@ -1,6 +1,6 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { QUESTIONS } from '../config/data';
-import { generatePlan, saveParams } from '../utils/helpers'; // Dodano import saveParams
+import { generatePlan, saveParams } from '../utils/helpers'; 
 import { Logo } from '../components/Common';
 
 export default function Chat({ onComplete }) {
@@ -35,7 +35,6 @@ export default function Chat({ onComplete }) {
 
   useEffect(() => { ref.current?.scrollIntoView({behavior: 'smooth'}); }, [msgs, typing, opts]);
 
-  // Funkcja zmieniona na async, aby obsłużyć zapis do Supabase
   const handleAnswer = async ans => {
     pushMsg('user', ans);
     const q = QUESTIONS[qi];
@@ -47,12 +46,12 @@ export default function Chat({ onComplete }) {
       setTyping(true);
       
       const userParams = {
+        gender: next.gender || '',
         age: next.age || '',
         weight: next.weight || '',
         height: next.height || ''
       };
 
-      // POPRAWKA: Użycie helpera saveParams zamiast bezpośredniego zapisu do localStorage
       await saveParams(userParams);
 
       setTimeout(() => {

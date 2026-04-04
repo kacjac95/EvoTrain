@@ -15,7 +15,8 @@ export default function ProgressDashboard({ plan, setPlan, sessions, setSessions
   const [userEmail, setUserEmail] = useState('Ładowanie...');
   const [userParams, setUserParams] = useState(() => {
     const saved = localStorage.getItem('evotrain_user_params');
-    return saved ? JSON.parse(saved) : { weight: '', height: '', age: '' };
+    // Dodano gender do początkowego stanu
+    return saved ? JSON.parse(saved) : { weight: '', height: '', age: '', gender: '' };
   });
 
   useEffect(() => {
@@ -44,11 +45,9 @@ export default function ProgressDashboard({ plan, setPlan, sessions, setSessions
     showToast('Parametry zostały zapisane w chmurze! ✓');
   };
 
-  // --- ZAKTUALIZOWANA FUNKCJA: GENERATOR DANYCH NA BAZIE PLANU ---
   const handleGenerateFakeData = () => {
     if(!window.confirm('To usunie Twoją obecną historię i wygeneruje 8 tygodni danych testowych na podstawie obecnego planu. Kontynuować?')) return;
     
-    // Filtrujemy tylko te dni, które faktycznie są dniami treningowymi w aktywnym planie
     const trainingDays = plan.week.filter(d => d.type === 'training');
     if (trainingDays.length === 0) {
       alert("Twój obecny plan nie zawiera dni treningowych!");
@@ -58,36 +57,25 @@ export default function ProgressDashboard({ plan, setPlan, sessions, setSessions
     const fakeSessions = [];
     const now = new Date();
     
-    // Generator: Idziemy od 8 tygodni wstecz do dzisiaj
     for (let w = 8; w >= 0; w--) {
-      // Dla każdego tygodnia symulujemy wykonanie wszystkich treningów z planu
       trainingDays.forEach((tDay, i) => {
-        // Obliczamy sztuczną datę (np. pierwszy trening w tygodniu to poniedziałek, drugi to środa itd.)
         const d = new Date(now);
-        // Rozkładamy treningi co 2 dni (w przybliżeniu) dla realistycznego efektu
         const offset = i * 2; 
         d.setDate(now.getDate() - (w * 7) - (7 - offset)); 
         
-        // Nie chcemy tworzyć treningów z przyszłości
         if (d > now) return; 
 
-        // Im dalej w przeszłość (w = 8), tym mniejszy ciężar startowy. Im bliżej teraźniejszości (w = 0), tym większy.
         const progMultiplier = (8 - w); 
 
-        // Generujemy listę wygenerowanych serii dla konkretnego dnia z planu
         const exercises = tDay.exercises.map(ex => {
           const setsCount = Number(ex.sets) || 3;
-          // Wyciągamy docelowe powtórzenia z planu (np. "8" z "8-12")
           const targetReps = ex.reps ? parseInt(ex.reps.toString().match(/\d+/)?.[0] || '8') : 8;
           
-          // Generujemy "bazowy ciężar" w zależności od ćwiczenia, aby to jakoś wyglądało
-          // Im większe partie, tym większy ciężar bazowy
           let baseWeight = 20;
           if (ex.cat === 'Legs') baseWeight = 60;
           if (ex.cat === 'Pull') baseWeight = 50;
           if (ex.cat === 'Push') baseWeight = 40;
           
-          // Z czasem dorzucamy kilogramy, żeby był progres
           const currentWeight = baseWeight + (progMultiplier * 2.5);
 
           const generatedSets = Array(setsCount).fill(null).map(() => ({
@@ -103,14 +91,13 @@ export default function ProgressDashboard({ plan, setPlan, sessions, setSessions
           };
         });
 
-        // Obliczanie statystyk łącznych dla całej sesji
         const totalSets = exercises.reduce((acc, ex) => acc + ex.sets.length, 0);
         const totalVol = exercises.reduce((acc, ex) => acc + ex.sets.reduce((sAcc, set) => sAcc + (set.reps * set.weight), 0), 0);
 
         fakeSessions.push({
-          id: d.getTime() + i, // Unikalne ID
+          id: d.getTime() + i,
           date: d.toISOString(),
-          dayLabel: tDay.label, // Bierzemy nazwę z planu (np. "PUSH A", "FULL BODY")
+          dayLabel: tDay.label,
           totalSets,
           totalVol,
           exercises
@@ -118,14 +105,12 @@ export default function ProgressDashboard({ plan, setPlan, sessions, setSessions
       });
     }
     
-    // Upewniamy się, że najnowsze sesje są na górze
     fakeSessions.sort((a, b) => new Date(b.date) - new Date(a.date));
     
     setSessions(fakeSessions);
-    saveSess(fakeSessions); // Zapis i wysyłka do Supabase
+    saveSess(fakeSessions); 
     showToast('Wygenerowano historię z Twojego planu! 🚀');
   };
-  // ------------------------------------------------
 
   const clean = s => s ? s.replace(/[💪🏋️🔥🌱⚡🔱🏪🏠🤸✅🦵🦴]/g, '').trim() : '';
 
@@ -251,10 +236,24 @@ export default function ProgressDashboard({ plan, setPlan, sessions, setSessions
                   <input type="number" value={userParams.height} onChange={e => setUserParams({...userParams, height: e.target.value})} style={{ padding: '10px', background: '#1a1a1a', border: '1px solid #333', color: '#fff', borderRadius: '8px', outline: 'none' }} />
                 </div>
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                <label style={{ fontSize: '0.8rem', color: 'var(--muted)' }}>Wiek</label>
-                <input type="number" value={userParams.age} onChange={e => setUserParams({...userParams, age: e.target.value})} style={{ padding: '10px', background: '#1a1a1a', border: '1px solid #333', color: '#fff', borderRadius: '8px', outline: 'none' }} />
+              
+              {/* NOWA LINIA: Wiek oraz Płeć umieszczone w jednym rzędzie dla lepszego wyglądu */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                  <label style={{ fontSize: '0.8rem', color: 'var(--muted)' }}>Wiek</label>
+                  <input type="number" value={userParams.age} onChange={e => setUserParams({...userParams, age: e.target.value})} style={{ padding: '10px', background: '#1a1a1a', border: '1px solid #333', color: '#fff', borderRadius: '8px', outline: 'none' }} />
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                  <label style={{ fontSize: '0.8rem', color: 'var(--muted)' }}>Płeć</label>
+                  <select value={userParams.gender} onChange={e => setUserParams({...userParams, gender: e.target.value})} style={{ padding: '10px', background: '#1a1a1a', border: '1px solid #333', color: '#fff', borderRadius: '8px', outline: 'none' }}>
+                    <option value="">Wybierz...</option>
+                    <option value="👨 Mężczyzna">👨 Mężczyzna</option>
+                    <option value="👩 Kobieta">👩 Kobieta</option>
+                    <option value="Inna">Inna</option>
+                  </select>
+                </div>
               </div>
+
               <button type="submit" className="btn-accept" style={{ marginTop: '10px', width: '100%' }}>Zapisz parametry</button>
             </form>
 

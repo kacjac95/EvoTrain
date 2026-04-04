@@ -6,7 +6,6 @@ const SK = { PLAN:'evotrain_plan_v2', SESSIONS:'evotrain_sessions_v2' };
 export const loadPlan = () => { try { return JSON.parse(localStorage.getItem(SK.PLAN)); } catch { return null; } };
 export const loadSess = () => { try { return JSON.parse(localStorage.getItem(SK.SESSIONS)) || []; } catch { return []; } };
 
-// Zapisujemy lokalnie i wysyłamy do Supabase
 export const savePlan = async p => { 
   localStorage.setItem(SK.PLAN, JSON.stringify(p)); 
   const { data: { user } } = await supabase.auth.getUser();
@@ -19,7 +18,6 @@ export const saveSess = async s => {
   if (user) await supabase.from('user_data').update({ sessions: s }).eq('user_id', user.id);
 };
 
-// Nowa funkcja do zapisywania parametrów fizycznych
 export const saveParams = async params => {
   localStorage.setItem('evotrain_user_params', JSON.stringify(params));
   const { data: { user } } = await supabase.auth.getUser();
@@ -45,21 +43,50 @@ export function generatePlan(profile) {
   const kn = profile.injuries.includes('kolanami');
   const sh = profile.injuries.includes('barkami');
 
+  // --- PARAMETRY FIZYCZNE ---
+  const age = parseInt(profile.age) || 30;
+  const weight = parseFloat(profile.weight) || 70;
+  const height = parseFloat(profile.height) || 175;
+  const gender = profile.gender || '';
+  
+  const bmi = height > 0 ? (weight / Math.pow(height / 100, 2)) : 22;
+  const isOverweight = bmi > 28;
+  const isOlder = age >= 50;
+  const isFemale = gender.includes('Kobieta');
+
   let pool = EXERCISES.filter(ex => {
     if (bk && ['dl','row','rdl','inv','lrow'].includes(ex.id)) return false;
     if (kn && ['sq','lunge','bulg','gobsq','calf','lgcurl'].includes(ex.id)) return false;
     if (sh && ['ohp','pu_d','pike','facepl','dips','incbp'].includes(ex.id)) return false;
+    
+    // Zabezpieczenia fizyczne: otyli początkujący z masą ciała nie podciągają się na start
+    if (isOverweight && isBW && isBeg && ['pull', 'chin', 'dips'].includes(ex.id)) return false;
+
     if (isBW) return ex.equipment.every(e=>['bodyweight','pullup_bar','dip_bar'].includes(e));
     if (isDb) return ex.equipment.every(e=>['dumbbells','bodyweight','pullup_bar','bench'].includes(e));
     return true;
   });
-  if (!isAdv||isBeg) pool = pool.filter(e=>e.diff!=='advanced');
+  
+  // Starsi lub początkujący użytkownicy nie dostają trudnych ćwiczeń
+  if (!isAdv || isBeg || isOlder) pool = pool.filter(e=>e.diff!=='advanced');
 
   const push = pool.filter(e=>e.cat==='Push'), pull = pool.filter(e=>e.cat==='Pull'),
         legs = pool.filter(e=>e.cat==='Legs'), core = pool.filter(e=>e.cat==='Core');
   const pick = (a,n)=>[...a].sort(()=>Math.random()-.5).slice(0,Math.min(n,a.length));
-  const sets = isStr ? {sets:isAdv?5:4,reps:'4-6',rest:'180s'} : isBulk ? {sets:4,reps:'8-12',rest:'90s'} : {sets:3,reps:'12-20',rest:'60s'};
-  const mk = list => list.map(ex=>({...ex,...sets,feedback:null,suggestion:null,aiUpdated:false}));
+  
+  // --- MODYFIKATORY SERII, POWTÓRZEŃ I PRZERW ---
+  let baseRest = isStr ? 180 : (isBulk ? 90 : 60);
+  if (isOlder) baseRest += 30; 
+  if (isOverweight) baseRest += 30; 
+  
+  let baseSets = isStr ? (isAdv ? 5 : 4) : (isBulk ? 4 : 3);
+  if (isOlder && baseSets > 3) baseSets -= 1; // Optymalizacja regeneracji dla +50
+
+  let baseReps = isStr ? '4-6' : isBulk ? '8-12' : '12-20';
+  if (isFemale && isBulk) baseReps = '10-14'; // Kobiety robią lekko wyższy zakres przy masie
+
+  const setsConfig = { sets: baseSets, reps: baseReps, rest: baseRest + 's' };
+  const mk = list => list.map(ex=>({...ex,...setsConfig,feedback:null,suggestion:null,aiUpdated:false}));
 
   let td=[];
   if(days<=2){ td=[{label:'FULL BODY A',exercises:mk([...pick(push,2),...pick(pull,2),...pick(legs,2),...pick(core,1)])},{label:'FULL BODY B',exercises:mk([...pick(push,2),...pick(pull,2),...pick(legs,2),...pick(core,1)])}]; }
